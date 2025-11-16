@@ -1,0 +1,27 @@
+diablo@fedora:~/Projects/gnome-global-menu/helper$ ./test_activation.py 
+======================================================================
+  AT-SPI Menu Item Activation Test
+======================================================================
+
+Searching for GIMP...
+✅ Found GIMP (PID: 12015)
+
+Searching for MenuBar...
+✅ MenuBar found
+
+======================================================================
+Test: Activating 'Help → About' menu item
+======================================================================
+
+✅ Found: Help → About
+   Role: menu item
+   Name: About
+
+⚠️  This will open GIMP's About dialog.
+Proceed with activation? [y/N]: y
+
+/home/diablo/Projects/gnome-global-menu/helper/./test_activation.py:69: DeprecationWarning: Atspi.Action.get_action_name is deprecated
+  action_name = menu_item.get_action_name(0)
+🎯 Activating: About (action: click)
+❌ Error during activation: 'Accessible' object has no attribute 'doAction'
+
