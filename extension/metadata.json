@@ -1,0 +1,13 @@
+{
+  "name": "Global Menu",
+  "description": "macOS-style global menu bar in the top panel",
+  "uuid": "globalmenu@gnome-shell-extensions",
+  "shell-version": [
+    "45",
+    "46",
+    "47",
+    "48"
+  ],
+  "url": "https://github.com/pnyro/gnome-global-menu",
+  "version": 1
+}

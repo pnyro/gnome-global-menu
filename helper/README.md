@@ -174,9 +174,95 @@ python3 window_tracker.py
 - Debug focus tracking behavior
 - Foundation for D-Bus service daemon
 
+## D-Bus Service
+
+### `globalmenu_service.py`
+Production daemon that exposes menu structures via D-Bus for the GNOME Shell extension.
+
+**Usage:**
+```bash
+# Start the service (runs in foreground)
+python3 globalmenu_service.py
+
+# In another terminal, test it
+./test_dbus.sh
+```
+
+**D-Bus Interface:**
+- **Bus Name:** `org.gnome.GlobalMenu`
+- **Object Path:** `/org/gnome/GlobalMenu`
+- **Interface:** `org.gnome.GlobalMenu`
+
+**Methods:**
+```
+GetCurrentMenu() → s (JSON string)
+  Returns the menu structure for the currently focused window
+
+ActivateMenuItem(i item_id) → b (boolean)
+  Activates a menu item by its unique ID from the JSON structure
+
+ActivateMenuItemByPath(as path) → b (boolean)
+  Activates a menu item by path, e.g., ["File", "New"]
+
+GetStatistics() → a{sv} (dict)
+  Returns service statistics (focus_changes, menus_extracted)
+```
+
+**Signals:**
+```
+MenuChanged(s app_name, b has_menu)
+  Emitted when focused window changes
+```
+
+**Manual D-Bus calls:**
+```bash
+# Get current menu
+gdbus call --session \
+  --dest org.gnome.GlobalMenu \
+  --object-path /org/gnome/GlobalMenu \
+  --method org.gnome.GlobalMenu.GetCurrentMenu
+
+# Monitor signals (switch windows to see events)
+gdbus monitor --session \
+  --dest org.gnome.GlobalMenu \
+  --object-path /org/gnome/GlobalMenu
+
+# Activate menu item by path (example: GIMP's Help → About)
+gdbus call --session \
+  --dest org.gnome.GlobalMenu \
+  --object-path /org/gnome/GlobalMenu \
+  --method org.gnome.GlobalMenu.ActivateMenuItemByPath \
+  "['Help', 'About']"
+```
+
+### `menu_serializer.py`
+Library for converting AT-SPI menu trees to JSON structures.
+
+**Features:**
+- Serializes complete menu trees with all metadata
+- Assigns unique IDs to each menu item for activation
+- Tracks item state (enabled, checked, accelerators)
+- Supports path-based and ID-based menu item lookup
+
+### `test_dbus.sh`
+Automated test script for the D-Bus service.
+
+**Usage:**
+```bash
+# Start service first, then run:
+./test_dbus.sh
+```
+
+**What it tests:**
+1. Service availability
+2. Interface introspection
+3. GetCurrentMenu() method
+4. GetStatistics() method
+5. MenuChanged signal monitoring
+
 ## Next Steps
 
 1. ✅ AT-SPI validation complete
-2. 🔄 Build window tracking (focus change events) - **IN PROGRESS**
-3. ⏭️ Add D-Bus service layer
+2. ✅ Build window tracking (focus change events)
+3. 🔄 Add D-Bus service layer - **IN PROGRESS**
 4. ⏭️ Create GNOME Shell extension
