@@ -55,13 +55,18 @@ def find_menubar(accessible, depth=0, max_depth=10):
         if accessible.getRole() == ROLE_MENU_BAR:
             return accessible
 
-        # Recursively check children
-        for i in range(accessible.childCount):
-            child = accessible.getChildAtIndex(i)
-            if child:
-                result = find_menubar(child, depth + 1, max_depth)
-                if result:
-                    return result
+        # Recursively check children (with limit to prevent hangs)
+        child_count = min(accessible.childCount, 100)  # Limit children to prevent hangs
+        for i in range(child_count):
+            try:
+                child = accessible.getChildAtIndex(i)
+                if child:
+                    result = find_menubar(child, depth + 1, max_depth)
+                    if result:
+                        return result
+            except:
+                # Skip problematic children
+                continue
     except Exception as e:
         # Silently ignore errors (some objects may not be accessible)
         pass
@@ -182,6 +187,28 @@ def demonstrate_activation(menu_items):
     print("     (Not executing to avoid unintended actions on your system)")
 
 
+def scan_all_apps(apps):
+    """Scan all apps for MenuBars and return list of apps with menus."""
+    print("\n🔄 Scanning all applications for menus...")
+    print("   (This may take a moment for apps with complex UI)\n")
+    apps_with_menus = []
+
+    for idx, app in enumerate(apps):
+        # Show progress with actual index [idx] and progress (current/total)
+        print(f"  [{idx}] Checking {app.name} ({idx+1}/{len(apps)})...", end='', flush=True)
+        try:
+            menubar = find_menubar(app)
+            if menubar:
+                print(f" ✅ MenuBar found ({menubar.childCount} menus)")
+                apps_with_menus.append((idx, app, menubar.childCount))
+            else:
+                print(f" ❌ No MenuBar")
+        except Exception as e:
+            print(f" ⚠️  Error: {e}")
+
+    return apps_with_menus
+
+
 def main():
     """Main validation script."""
     import sys
@@ -199,71 +226,101 @@ def main():
 
     print(f"\n✅ Found {len(apps)} accessible applications")
 
-    # Check for command-line argument
+    # Check for command-line argument (non-interactive mode)
     if len(sys.argv) > 1:
         choice = sys.argv[1]
-    else:
-        # Ask user which app to analyze
-        print("\n" + "="*70)
-        print("Enter the number of an application to analyze its menus")
-        print("(or press Enter to scan all apps)")
-        print("="*70)
-        try:
-            choice = input("\nYour choice: ").strip()
-        except (EOFError, KeyboardInterrupt):
-            choice = ""
-            print()
-
-    try:
 
         if choice == "":
             # Scan all apps
-            print("\n🔄 Scanning all applications for menus...\n")
-            apps_with_menus = []
-            for app in apps:
-                try:
-                    menubar = find_menubar(app)
-                    if menubar:
-                        print(f"  ✅ {app.name}: MenuBar found ({menubar.childCount} menus)")
-                        apps_with_menus.append(app)
-                    else:
-                        print(f"  ❌ {app.name}: No MenuBar")
-                except Exception as e:
-                    print(f"  ⚠️  {app.name}: Error - {e}")
+            apps_with_menus = scan_all_apps(apps)
 
             if apps_with_menus:
                 print(f"\n✅ {len(apps_with_menus)} application(s) with accessible menus found!")
-                print("\nRe-run the script and select an app number to see detailed menu structure.")
             else:
                 print("\n❌ No applications with accessible MenuBars found.")
-                print("   Try running apps like: gedit, gnome-text-editor, or GIMP")
+                print("   Try running apps like: GIMP or LibreOffice")
         else:
             # Analyze specific app
-            idx = int(choice)
-            if 0 <= idx < len(apps):
-                menu_items = test_app_menus(apps[idx])
-                if menu_items:
-                    demonstrate_activation(menu_items)
-            else:
-                print(f"❌ Invalid choice: {idx}")
+            try:
+                idx = int(choice)
+                if 0 <= idx < len(apps):
+                    menu_items = test_app_menus(apps[idx])
+                    if menu_items:
+                        demonstrate_activation(menu_items)
+                else:
+                    print(f"❌ Invalid choice: {idx}")
+                    return 1
+            except ValueError:
+                print("❌ Invalid input - must be a number")
                 return 1
 
-    except KeyboardInterrupt:
-        print("\n\n⚠️  Interrupted by user")
-        return 1
-    except ValueError:
-        print("❌ Invalid input")
-        return 1
-    except Exception as e:
-        print(f"❌ Error: {e}")
-        import traceback
-        traceback.print_exc()
-        return 1
+        print("\n" + "="*70)
+        print("✅ Validation complete!")
+        print("="*70)
+        return 0
 
-    print("\n" + "="*70)
-    print("✅ Validation complete!")
-    print("="*70)
-    return 0
+    # Interactive mode - loop until user exits
+    apps_with_menus = None
+
+    while True:
+        try:
+            print("\n" + "="*70)
+            print("Choose an option:")
+            print("  • Enter a number (0-{}) to analyze that app's menus".format(len(apps)-1))
+            if apps_with_menus:
+                print("  • Press 's' to re-scan all apps")
+            else:
+                print("  • Press 's' (or Enter) to scan all apps for MenuBars")
+            print("  • Press 'q' or Ctrl+C to quit")
+            print("="*70)
+
+            choice = input("\nYour choice: ").strip().lower()
+
+            if choice == 'q':
+                print("\n👋 Goodbye!")
+                return 0
+            elif choice == 's' or (choice == '' and not apps_with_menus):
+                # Scan all apps
+                apps_with_menus = scan_all_apps(apps)
+
+                if apps_with_menus:
+                    print(f"\n✅ {len(apps_with_menus)} application(s) with accessible menus:")
+                    for idx, app, menu_count in apps_with_menus:
+                        print(f"     [{idx}] {app.name} ({menu_count} menus)")
+                    print("\nEnter an app number to see detailed menu structure.")
+                else:
+                    print("\n❌ No applications with accessible MenuBars found.")
+                    print("   Try running apps like: GIMP or LibreOffice")
+            elif choice == '':
+                if apps_with_menus:
+                    print("⚠️  Already scanned. Enter an app number or 's' to re-scan.")
+                else:
+                    # First time, scan automatically
+                    apps_with_menus = scan_all_apps(apps)
+                    if apps_with_menus:
+                        print(f"\n✅ {len(apps_with_menus)} application(s) with accessible menus:")
+                        for idx, app, menu_count in apps_with_menus:
+                            print(f"     [{idx}] {app.name} ({menu_count} menus)")
+            else:
+                # Try to parse as app number
+                try:
+                    idx = int(choice)
+                    if 0 <= idx < len(apps):
+                        menu_items = test_app_menus(apps[idx])
+                        if menu_items:
+                            demonstrate_activation(menu_items)
+                    else:
+                        print(f"❌ Invalid choice: {idx} (must be 0-{len(apps)-1})")
+                except ValueError:
+                    print("❌ Invalid input - enter a number, 's', or 'q'")
+
+        except (EOFError, KeyboardInterrupt):
+            print("\n\n👋 Goodbye!")
+            return 0
+        except Exception as e:
+            print(f"❌ Error: {e}")
+            import traceback
+            traceback.print_exc()
 
 
 if __name__ == "__main__":

@@ -9,13 +9,21 @@ Validates that menu extraction from applications via AT-SPI works correctly.
 
 **Usage:**
 ```bash
-# Interactive mode - choose an app
+# Interactive mode (recommended)
 python3 atspi_validate.py
 
-# Scan all apps for menus
+# Workflow:
+#   1. Lists all accessible apps
+#   2. Press Enter (or 's') to scan which apps have MenuBars
+#   3. Shows list of apps with menus
+#   4. Enter a number to see detailed menu structure for that app
+#   5. Returns to menu (can analyze another app or re-scan)
+#   6. Press 'q' or Ctrl+C to exit
+
+# Non-interactive: Scan all apps and exit
 python3 atspi_validate.py ""
 
-# Analyze a specific app by index
+# Non-interactive: Analyze specific app and exit
 python3 atspi_validate.py 16  # e.g., GIMP
 ```
 
@@ -64,13 +72,49 @@ ps aux | grep at-spi
 ## Test Applications
 
 **Known to work (accessible menus):**
-- GIMP (GTK2/3) - Full menu structure exposed
-- Older GTK3 applications with traditional menu bars
+- ✅ GIMP (GTK2/3) - Full menu structure exposed
+- ✅ LibreOffice - Complex menu structure
+- ✅ Older GTK3 applications with traditional menu bars
+- ✅ Qt apps (with QT_ACCESSIBILITY=1 environment variable)
 
 **Known NOT to work:**
-- Nautilus (Files) - GTK4 with hamburger menu
-- ptyxis - GTK4 terminal
-- Most modern GNOME apps (use client-side decorations)
+- ❌ Nautilus (Files) - GTK4 with hamburger menu
+- ❌ ptyxis - GTK4 terminal
+- ❌ Most modern GNOME apps (use client-side decorations)
+- ❌ Chrome/Brave (without --force-renderer-accessibility flag)
+- ❌ Flatpak apps (sandboxed AT-SPI bus)
+- ❌ Electron apps (often no AT-SPI support)
+
+## Why Some Apps Don't Appear
+
+### Chromium Browsers (Chrome, Brave, Edge)
+Chromium disables AT-SPI by default for performance. To enable:
+
+```bash
+# Temporary (one session)
+google-chrome --force-renderer-accessibility
+brave --force-renderer-accessibility
+
+# Or enable in browser settings:
+# Visit chrome://accessibility or brave://accessibility
+# Enable "Accessibility" mode
+```
+
+### Flatpak Applications
+Flatpak apps run in a sandbox with their own AT-SPI bus. Solutions:
+- Install native packages instead of flatpak when possible
+- Some flatpaks may not expose menus even with correct permissions
+
+### GTK4 Applications
+Modern GNOME apps often use client-side decorations without traditional menus:
+- Files (Nautilus), Console, Text Editor use hamburger menus
+- These won't work with global menu unless they expose DBusMenu
+
+### Diagnostic Tool
+Run the diagnostic tool to check your system:
+```bash
+python3 diagnose_atspi.py
+```
 
 ## pyatspi API Notes
 
