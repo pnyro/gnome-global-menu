@@ -137,9 +137,46 @@ if action_iface and action_iface.nActions > 0:
 - ❌ `accessible.get_n_actions()` - deprecated
 - ✅ `accessible.queryAction()` - use this instead
 
+## Window Tracking Daemon
+
+### `window_tracker.py`
+Real-time window focus monitoring daemon that extracts menus as windows gain focus.
+
+**Usage:**
+```bash
+# Run the daemon (press Ctrl+C to stop)
+python3 window_tracker.py
+```
+
+**What it does:**
+- Listens to AT-SPI `window:activate` events
+- Automatically detects when window focus changes
+- Extracts MenuBar structure from newly focused windows
+- Displays menu information in real-time
+- Shows statistics on exit
+
+**Example output:**
+```
+======================================================================
+🪟 Window activated: GNU Image Manipulation Program
+   Role: frame
+   Focus changes: 5
+   App: gimp
+   ✅ MenuBar found (11 menus)
+   Menus: File, Edit, Select, View, Image, Layer, Colors, Tools, Filters, Windows, Help
+   Total menus extracted: 3
+======================================================================
+```
+
+**Use cases:**
+- Test real-time menu extraction
+- Monitor which apps expose accessible menus
+- Debug focus tracking behavior
+- Foundation for D-Bus service daemon
+
 ## Next Steps
 
 1. ✅ AT-SPI validation complete
-2. ⏭️ Build window tracking (focus change events)
+2. 🔄 Build window tracking (focus change events) - **IN PROGRESS**
 3. ⏭️ Add D-Bus service layer
 4. ⏭️ Create GNOME Shell extension
