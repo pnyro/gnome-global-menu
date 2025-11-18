@@ -33,6 +33,7 @@ class GlobalMenuService(dbus.service.Object):
         self.current_window = None
         self.current_menubar = None
         self.current_app = None
+        self.current_app_with_menu = None  # Track which app owns the current menu
         self.serializer = MenuSerializer()
 
         # Current serialized menu (cached)
@@ -103,6 +104,11 @@ class GlobalMenuService(dbus.service.Object):
             except:
                 pass
 
+            # FIX: Ignore focus changes to GNOME Shell (panel/overview)
+            # This prevents the menu from disappearing when clicking the top bar
+            if app_name == "gnome-shell":
+                return
+
             self.current_app = app
 
             # Find menubar
@@ -110,6 +116,7 @@ class GlobalMenuService(dbus.service.Object):
 
             if menubar:
                 self.current_menubar = menubar
+                self.current_app_with_menu = app  # Remember this app has the menu
                 self.menus_extracted += 1
 
                 # Serialize menu structure
@@ -128,8 +135,17 @@ class GlobalMenuService(dbus.service.Object):
                 self.MenuChanged(app_name, True)
 
             else:
+                # LOGIC FIX: Child Window Persistence
+                # If this window has no menu, but belongs to the same app 
+                # that currently OWNS the menu, do not clear it.
+                if app and self.current_app_with_menu and app == self.current_app_with_menu:
+                    print(f"\n🪟 Dialog/Child detected: {window_name} (belonging to {app_name})")
+                    print(f"   🛡️  Persisting existing menu")
+                    return
+
                 self.current_menubar = None
                 self.current_menu_data = None
+                self.current_app_with_menu = None # Reset tracker
 
                 print(f"\n🪟 No menu: {window_name} ({app_name})")
 
