@@ -104,6 +104,10 @@ class GlobalMenuService(dbus.service.Object):
             except:
                 pass
 
+            # FIX: Ignore XWayland wrapper frames to prevent flickering
+            if app_name == "mutter-x11-frames":
+                return
+
             # FIX: Ignore focus changes to GNOME Shell (panel/overview)
             # This prevents the menu from disappearing when clicking the top bar
             if app_name == "gnome-shell":
