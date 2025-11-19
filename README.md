@@ -6,6 +6,10 @@ macOS-style global menu bar for GNOME Shell - displays application menus in the 
 ![GNOME Shell: 45-47](https://img.shields.io/badge/GNOME%20Shell-45--48-blue)
 ![Python: 3.9+](https://img.shields.io/badge/python-3.9%2B-blue)
 
+## Demo
+
+![Screenshot](./demo/expanded.png)
+
 ## Overview
 
 This project implements a **global menu bar** for GNOME (similar to macOS or Unity) using a two-component architecture:
