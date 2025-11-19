@@ -2,7 +2,7 @@
 
 macOS-style global menu bar for GNOME Shell - displays application menus in the top panel.
 
-![Status: Prototype Complete](https://img.shields.io/badge/status-prototype%20complete-success)
+![Status: In Progress](https://img.shields.io/badge/status-in%20progress-yellow)
 ![GNOME Shell: 45-47](https://img.shields.io/badge/GNOME%20Shell-45--48-blue)
 ![Python: 3.9+](https://img.shields.io/badge/python-3.9%2B-blue)
 
