@@ -3,7 +3,7 @@
 macOS-style global menu bar for GNOME Shell - displays application menus in the top panel.
 
 ![Status: In Progress](https://img.shields.io/badge/status-in%20progress-yellow)
-![GNOME Shell: 45-47](https://img.shields.io/badge/GNOME%20Shell-45--48-blue)
+![GNOME Shell: 50](https://img.shields.io/badge/GNOME%20Shell-50-blue)
 ![Python: 3.9+](https://img.shields.io/badge/python-3.9%2B-blue)
 
 ## Demo
@@ -137,9 +137,6 @@ gnome-global-menu/
 ├── example-gnome-extension/     # Reference extension
 │   └── window-title-is-back/    # Example code
 │
-├── CLAUDE.md                    # Project instructions
-├── CHATGPT.md                   # Design notes (from ChatGPT)
-├── TESTING_PHASE4.md            # Complete testing guide
 └── README.md                    # This file
 ```
 
