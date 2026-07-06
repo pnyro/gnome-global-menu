@@ -2,50 +2,56 @@
 //    GNOME Shell extension
 
 import Adw from 'gi://Adw';
-import Gtk from 'gi://Gtk';
+import Gio from 'gi://Gio';
 
-import { ExtensionPreferences } from 'resource:///org/gnome/Shell/Extensions/js/extensions/prefs.js';
+import {ExtensionPreferences} from 'resource:///org/gnome/Shell/Extensions/js/extensions/prefs.js';
 
 
 export default class GlobalMenuPreferences extends ExtensionPreferences {
     fillPreferencesWindow(window) {
-        // Create a preferences page
+        const settings = this.getSettings();
+
         const page = new Adw.PreferencesPage({
             title: 'General',
-            icon_name: 'dialog-information-symbolic',
+            icon_name: 'open-menu-symbolic',
         });
         window.add(page);
 
-        // Create a preferences group
-        const group = new Adw.PreferencesGroup({
-            title: 'Global Menu Settings',
-            description: 'Configure the global menu bar behavior',
+        const behavior = new Adw.PreferencesGroup({
+            title: 'Menu Bar',
         });
-        page.add(group);
+        page.add(behavior);
 
-        // Info row
-        const infoRow = new Adw.ActionRow({
-            title: 'Global Menu',
-            subtitle: 'macOS-style menu bar for GNOME',
+        const accelsRow = new Adw.SwitchRow({
+            title: 'Show keyboard shortcuts',
+            subtitle: 'Display accelerator hints next to menu items',
         });
-        group.add(infoRow);
+        behavior.add(accelsRow);
+        settings.bind('show-accels', accelsRow, 'active',
+            Gio.SettingsBindFlags.DEFAULT);
 
-        // Instructions
-        const instructions = new Adw.PreferencesGroup({
-            title: 'Requirements',
-            description: 'The Global Menu extension requires the helper daemon to be running',
+        const keys = new Adw.PreferencesGroup({
+            title: 'Keyboard Shortcuts',
+            description: 'Edit with dconf under /org/gnome/shell/extensions/globalmenu/',
         });
-        page.add(instructions);
+        page.add(keys);
 
-        const daemonRow = new Adw.ActionRow({
-            title: 'Helper Daemon',
-            subtitle: 'Run: python3 globalmenu_service.py',
+        keys.add(new Adw.ActionRow({
+            title: 'Search menus',
+            subtitle: settings.get_strv('menu-search').join(', ') || 'unset',
+        }));
+        keys.add(new Adw.ActionRow({
+            title: 'Open first menu',
+            subtitle: settings.get_strv('open-first-menu').join(', ') || 'unset',
+        }));
+
+        const about = new Adw.PreferencesGroup({
+            title: 'How it works',
+            description: 'Menus come from the best available source per app: ' +
+                'native GMenu (in-process), the AppMenu registrar (Qt), or ' +
+                'AT-SPI scraping via the helper daemon ' +
+                '(gnome-globalmenu.service, started on demand).',
         });
-        instructions.add(daemonRow);
-
-        // TODO: Add more preferences in the future
-        // - Blacklist apps
-        // - Show/hide app name
-        // - Keyboard shortcuts
+        page.add(about);
     }
 }

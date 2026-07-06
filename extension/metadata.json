@@ -6,8 +6,11 @@
     "45",
     "46",
     "47",
-    "48"
+    "48",
+    "49",
+    "50"
   ],
   "url": "https://github.com/pnyro/gnome-global-menu",
-  "version": 1
+  "version": 2,
+  "settings-schema": "org.gnome.shell.extensions.globalmenu"
 }

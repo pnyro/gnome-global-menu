@@ -1,0 +1,15 @@
+[Unit]
+Description=GNOME Global Menu helper daemon
+PartOf=graphical-session.target
+After=graphical-session.target
+
+[Service]
+Type=dbus
+BusName=org.gnome.GlobalMenu
+Environment=PYTHONPATH=%h/.local/share/gnome-globalmenu
+ExecStart=/usr/bin/python3 -m globalmenu
+Restart=on-failure
+Slice=background.slice
+
+[Install]
+WantedBy=graphical-session.target

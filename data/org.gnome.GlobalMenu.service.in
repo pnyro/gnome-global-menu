@@ -1,0 +1,4 @@
+[D-BUS Service]
+Name=org.gnome.GlobalMenu
+Exec=/usr/bin/env PYTHONPATH=@DATADIR@/gnome-globalmenu /usr/bin/python3 -m globalmenu
+SystemdService=gnome-globalmenu.service

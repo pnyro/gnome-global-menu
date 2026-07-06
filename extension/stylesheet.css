@@ -1,0 +1,22 @@
+.global-menu-bar {
+    spacing: 0px;
+}
+
+.global-menu-entry {
+    -natural-hpadding: 8px;
+    -minimum-hpadding: 4px;
+}
+
+.global-menu-accel {
+    color: rgba(255, 255, 255, 0.45);
+    padding-left: 24px;
+    font-size: 0.9em;
+}
+
+.global-menu-search {
+    min-width: 360px;
+}
+
+.global-menu-search-entry {
+    margin: 4px 8px;
+}

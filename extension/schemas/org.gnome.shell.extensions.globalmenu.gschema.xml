@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<schemalist gettext-domain="globalmenu">
+  <schema id="org.gnome.shell.extensions.globalmenu"
+          path="/org/gnome/shell/extensions/globalmenu/">
+    <key name="menu-search" type="as">
+      <default><![CDATA[['<Super><Shift>slash']]]></default>
+      <summary>Open the menu search overlay</summary>
+      <description>Fuzzy-search all menus of the focused application.</description>
+    </key>
+    <key name="open-first-menu" type="as">
+      <default><![CDATA[['F10']]]></default>
+      <summary>Open the first menu in the panel</summary>
+      <description>Focus the global menu bar, like F10 does in-window.</description>
+    </key>
+    <key name="show-accels" type="b">
+      <default>true</default>
+      <summary>Show accelerator hints</summary>
+      <description>Display keyboard shortcuts next to menu items.</description>
+    </key>
+  </schema>
+</schemalist>
