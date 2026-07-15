@@ -112,12 +112,22 @@ export class GlobalMenuBar {
         this._entries = [];
         this._generation = 0;
 
-        this._box = new St.BoxLayout({style_class: 'global-menu-bar'});
+        // Reactive so clicks on the title (and any non-reactive gaps) are
+        // absorbed by the panel. Otherwise Clutter pick falls through to a
+        // maximized window under the panel and activates it, unfocusing the
+        // current app.
+        this._box = new St.BoxLayout({
+            style_class: 'global-menu-bar',
+            reactive: true,
+        });
         this._title = new St.Label({
             style_class: 'global-menu-title',
             y_align: Clutter.ActorAlign.CENTER,
+            reactive: true,
+            can_focus: false,
             visible: false,
         });
+        this._title.connect('button-press-event', () => Clutter.EVENT_STOP);
         this._box.add_child(this._title);
         Main.panel._leftBox.insert_child_at_index(this._box, PANEL_POSITION);
     }
