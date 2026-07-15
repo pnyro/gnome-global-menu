@@ -183,7 +183,7 @@ export class MenuSearch {
 
     _addInfo(text) {
         this._resultsSection.addMenuItem(
-            new PopupMenu.PopupMenuItem(text, {reactive: false}));
+            new PopupMenu.PopupMenuItem(text, {reactive: false, can_focus: false}));
     }
 
     _activateFirst() {

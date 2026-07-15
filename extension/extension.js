@@ -151,6 +151,13 @@ export default class GlobalMenuExtension extends Extension {
         } catch {
             xid = 0;
         }
+        if (!xid) {
+            // mutter 46+ dropped get_xwindow() from the public API; X11
+            // windows still lead their description with the xid ("0x%lx (%s)").
+            const m = win.get_description?.()?.match(/^0x[0-9a-fA-F]+/);
+            if (m)
+                xid = parseInt(m[0], 16);
+        }
         return {
             pid: win.get_pid?.() ?? 0,
             appId: app?.get_id() ?? '',

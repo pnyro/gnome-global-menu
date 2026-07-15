@@ -91,6 +91,27 @@ def _strip_mnemonic(label: str) -> str:
     return label.replace("__", "\x00").replace("_", "").replace("\x00", "_")
 
 
+def _flatpak_scope(pid: int) -> Optional[str]:
+    """The systemd scope unit of pid, only if it is a flatpak instance scope.
+
+    Flatpak apps reach the session bus through xdg-dbus-proxy, so the PID
+    the bus reports for a registration is the proxy's, not the app's — PID
+    matching can never work. But proxy and app live in the same per-instance
+    app-flatpak-<app-id>-<instance>.scope cgroup, which is safe to match on
+    (unlike, say, a terminal's scope, shared by unrelated child processes).
+    """
+    try:
+        with open(f"/proc/{pid}/cgroup") as f:
+            cgroup = f.read()
+    except OSError:
+        return None
+    for line in cgroup.splitlines():
+        unit = line.rpartition("/")[2]
+        if unit.startswith("app-flatpak-"):
+            return unit
+    return None
+
+
 def _shortcut_to_accel(shortcut) -> Optional[str]:
     """dbusmenu 'shortcut' is aas, e.g. [["Control","Shift","S"]] →
     '<Control><Shift>s' (GTK accelerator string, first chord only)."""
@@ -109,6 +130,7 @@ class Registration:
     path: str
     pid: int
     order: int  # monotonic; newest registration wins PID-based matching
+    scope: Optional[str] = None  # flatpak instance scope of pid, if any
 
 
 class RegistrarSource(Source):
@@ -211,13 +233,15 @@ class RegistrarSource(Source):
 
     def _register(self, window_id: int, sender: str, menu_path: str):
         pid = self._pid_of(sender)
+        scope = _flatpak_scope(pid) if pid > 0 else None
         self._order += 1
         self._registrations[window_id] = Registration(
-            window_id=window_id, sender=sender, path=menu_path, pid=pid, order=self._order
+            window_id=window_id, sender=sender, path=menu_path, pid=pid,
+            order=self._order, scope=scope,
         )
         log.info(
-            "window %d registered by %s (pid %d) at %s",
-            window_id, sender, pid, menu_path,
+            "window %d registered by %s (pid %d%s) at %s",
+            window_id, sender, pid, f", {scope}" if scope else "", menu_path,
         )
         self._watch_sender(sender)
         self._emit_registrar(
@@ -335,6 +359,12 @@ class RegistrarSource(Source):
             return self._registrations[window.xid]
         if window.pid > 0:
             mine = [r for r in self._registrations.values() if r.pid == window.pid]
+            if not mine:
+                # Flatpak: the registration PID is the app's xdg-dbus-proxy;
+                # fall back to the shared per-instance flatpak scope.
+                scope = _flatpak_scope(window.pid)
+                if scope:
+                    mine = [r for r in self._registrations.values() if r.scope == scope]
             if mine:
                 return max(mine, key=lambda r: r.order)
         return None

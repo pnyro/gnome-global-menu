@@ -22,6 +22,15 @@ function formatAccel(accel) {
         .replace(/\+(\w)$/, (_, k) => `+${k.toUpperCase()}`);
 }
 
+// Non-reactive AND non-focusable: keyboard navigation may land focus on a
+// focusable placeholder (PopupSubMenuMenuItem's Right-arrow handler navigates
+// into the submenu the moment it opens), and destroying the focused actor on
+// rebuild drops key focus on the floor — arrows and Space go dead until the
+// mouse re-establishes focus.
+function loadingItem(text = '…') {
+    return new PopupMenu.PopupMenuItem(text, {reactive: false, can_focus: false});
+}
+
 class MenuEntry {
     constructor(node, owner) {
         this.node = node;
@@ -42,20 +51,16 @@ class MenuEntry {
         this.menu.actor.hide();
         Main.uiGroup.add_child(this.menu.actor);
 
-        // PopupMenu.open() refuses to open an empty menu, so populate before
-        // toggling: populateMenu synchronously seeds a loading placeholder,
-        // then fills in the real items when the daemon answers.
+        // Keep the menu seeded: PopupMenu.open() refuses to open an empty
+        // menu, and the menu manager's built-in hover-switching (slide to
+        // another entry while one is open) calls open() directly — with an
+        // empty menu it dies silently. Populating on open-state-changed
+        // (below) then covers every opener: click, keyboard, hover-switch.
+        this.menu.addMenuItem(loadingItem());
+
         this.button.connect('button-press-event', () => {
-            if (!this.menu.isOpen)
-                this._owner.populateMenu(this.menu, this.node);
             this.menu.toggle();
             return Clutter.EVENT_STOP;
-        });
-        // macOS behavior: while any menu is open, hovering another top-level
-        // entry slides over to it.
-        this.button.connect('notify::hover', () => {
-            if (this.button.hover)
-                this._owner.entryHovered(this);
         });
         // Left/Right at the top menu level move across the bar.
         this.menu.actor.connect('key-press-event', (_actor, event) => {
@@ -68,15 +73,14 @@ class MenuEntry {
         });
         this.menu.connect('open-state-changed', (_menu, open) => {
             this.button.checked = open;
-            this._owner.entryOpenState(this, open);
+            if (open)
+                this._owner.populateMenu(this.menu, this.node);
         });
     }
 
     open(animate = true) {
-        if (this.menu.isOpen)
-            return;
-        this._owner.populateMenu(this.menu, this.node);
-        this.menu.open(animate);
+        if (!this.menu.isOpen)
+            this.menu.open(animate);
     }
 
     destroy() {
@@ -91,7 +95,6 @@ export class GlobalMenuBar {
         this._source = null; // whoever produced the current model (daemon client or GMenuSource)
         this._entries = [];
         this._generation = 0;
-        this._openEntry = null;
 
         this._box = new St.BoxLayout({style_class: 'global-menu-bar'});
         Main.panel._leftBox.insert_child_at_index(this._box, PANEL_POSITION);
@@ -114,18 +117,6 @@ export class GlobalMenuBar {
     }
 
     // -- top-level interaction ----------------------------------------------
-
-    entryOpenState(entry, open) {
-        if (open)
-            this._openEntry = entry;
-        else if (this._openEntry === entry)
-            this._openEntry = null;
-    }
-
-    entryHovered(entry) {
-        if (this._openEntry && this._openEntry !== entry)
-            entry.open(false); // menuManager closes the previous one
-    }
 
     switchRelative(entry, direction) {
         const i = this._entries.indexOf(entry);
@@ -180,9 +171,9 @@ export class GlobalMenuBar {
         const source = this._source;
         if (!source)
             return;
+        const seq = menu._globalMenuSeq = (menu._globalMenuSeq ?? 0) + 1;
         menu.removeAll();
-        const loading = new PopupMenu.PopupMenuItem('…', {reactive: false});
-        menu.addMenuItem(loading);
+        menu.addMenuItem(loadingItem());
 
         source.opened(node.id);
         let children;
@@ -193,13 +184,27 @@ export class GlobalMenuBar {
             children = [];
         }
         console.log(`GlobalMenu: populate '${node.label}': ${children?.length ?? 0} items (still open=${menu.isOpen})`);
-        if (!menu.isOpen)
-            return; // closed while we were fetching
+        if (!menu.isOpen || menu._globalMenuSeq !== seq)
+            return; // closed or repopulated while we were fetching
         menu.removeAll();
         this._buildItems(menu, children ?? []);
     }
 
     _buildItems(menu, nodes) {
+        // Qt collapses leading/trailing/adjacent separators at render time;
+        // dbusmenu exports them verbatim (VLC's Playback menu has three in a
+        // row where context-dependent items sit hidden between them). The
+        // shell only collapses separators present when the menu opens, and we
+        // populate after that — so collapse them ourselves.
+        nodes = nodes.filter((node, i, all) => {
+            if (node.type !== 'separator')
+                return true;
+            const prev = all[i - 1];
+            return prev !== undefined && prev.type !== 'separator';
+        });
+        while (nodes.at(-1)?.type === 'separator')
+            nodes.pop();
+
         for (const node of nodes) {
             if (node.type === 'separator') {
                 menu.addMenuItem(new PopupMenu.PopupSeparatorMenuItem());
@@ -209,7 +214,7 @@ export class GlobalMenuBar {
                 const sub = new PopupMenu.PopupSubMenuMenuItem(node.label);
                 sub.setSensitive(node.enabled !== false);
                 // Seed: PopupSubMenu.open() also refuses to expand when empty.
-                sub.menu.addMenuItem(new PopupMenu.PopupMenuItem('…', {reactive: false}));
+                sub.menu.addMenuItem(loadingItem());
                 let loadedOpenCount = 0;
                 sub.menu.connect('open-state-changed', async (_m, open) => {
                     if (!open || !this._source)
@@ -222,7 +227,10 @@ export class GlobalMenuBar {
                             return;
                         sub.menu.removeAll();
                         this._buildItems(sub.menu, children ?? []);
-                        sub.menu.open(true);
+                        // The expand animation eased towards the placeholder's
+                        // height; snap to the real content height.
+                        sub.menu.actor.remove_all_transitions();
+                        sub.menu.actor.set_height(-1);
                     } catch (e) {
                         console.warn(`GlobalMenu: submenu ${node.label} failed: ${e.message}`);
                     }
@@ -258,7 +266,7 @@ export class GlobalMenuBar {
         }
 
         if (nodes.length === 0)
-            menu.addMenuItem(new PopupMenu.PopupMenuItem('(empty)', {reactive: false}));
+            menu.addMenuItem(loadingItem('(empty)'));
     }
 
     _removeEntries() {
