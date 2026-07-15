@@ -7,6 +7,13 @@ bus daemon), so native-Wayland Qt apps — whose "window ids" are Qt-internal
 counters, not X ids — still match the focused window by PID. XWayland apps
 match by real X window id first.
 
+Qt6 / KDE-platform apps on GNOME Wayland often export a dbusmenu object and
+hide their in-window menubar (because our registrar name is on the bus) but
+never call RegisterWindow — they expect KWin's org_kde_kwin_appmenu Wayland
+protocol instead. For those, and for apps orphaned by a daemon restart, we
+discover /MenuBar/* (and /com/canonical/menu/*) objects on the focused app's
+bus connection and serve them as if registered.
+
 Like the AT-SPI tier, this source is lazy: claim() serializes only the
 top-level entries (one GetLayout of depth 1); children are fetched fresh on
 open, preceded by AboutToShow so dynamic Qt menus populate themselves.
@@ -15,6 +22,7 @@ open, preceded by AboutToShow so dynamic Qt menus populate themselves.
 from __future__ import annotations
 
 import logging
+import re
 import time
 from dataclasses import dataclass
 from typing import Callable, Optional
@@ -42,6 +50,15 @@ DBUSMENU_IFACE = "com.canonical.dbusmenu"
 CALL_TIMEOUT_MS = 300
 # Debounce for change notifications (registrations + layout signals).
 NOTIFY_DEBOUNCE_MS = 150
+# How long a failed orphan-discovery stays negative-cached for a pid/scope.
+DISCOVERY_NEGATIVE_TTL_S = 3.0
+# Synthetic window ids for discovered (unregistered) menus — outside the
+# range of real X11 xids so they never collide with RegisterWindow keys.
+DISCOVERY_XID_BASE = 0xF0000000
+
+# Qt exports at /MenuBar/N; Electron/libdbusmenu often uses /com/canonical/menu/*.
+_MENU_ROOTS = ("/MenuBar", "/com/canonical/menu")
+_NODE_NAME_RE = re.compile(r'<node name="([^"]+)"/>')
 
 REGISTRAR_XML = """
 <node>
@@ -149,6 +166,10 @@ class RegistrarSource(Source):
         self._sender_watches: dict[str, int] = {}
         self._order = 0
         self._notify_id = 0
+        # Orphan dbusmenu discovery: key → Registration, or None after a miss
+        # (with timestamp in _discovery_tried). Key is flatpak scope or "pid:N".
+        self._discovered: dict[str, Registration] = {}
+        self._discovery_tried: dict[str, float] = {}
 
         # active claim
         self._generation = 0
@@ -313,6 +334,13 @@ class RegistrarSource(Source):
             self._unregister(window_id, None)
         if gone:
             log.info("%s vanished, dropped %d window(s)", sender, len(gone))
+        dropped = [k for k, reg in self._discovered.items() if reg.sender == sender]
+        for key in dropped:
+            del self._discovered[key]
+            self._discovery_tried.pop(key, None)
+        if dropped and self._reg is not None and self._reg.sender == sender:
+            self._reset()
+            self._schedule_notify()
 
     def _schedule_notify(self):
         if self._on_menus_changed is None or self._notify_id:
@@ -335,7 +363,9 @@ class RegistrarSource(Source):
 
         menus = self._fetch_children(reg, 0)
         if menus is None:
-            # Registered but unreachable/empty: let a lower tier try.
+            # Registered/discovered but unreachable: drop a stale discovery
+            # so the next focus can re-scan, then let a lower tier try.
+            self._forget_discovery(reg)
             self._reset()
             return None
 
@@ -354,6 +384,12 @@ class RegistrarSource(Source):
             menus=[m for m in menus if m.label or m.type == TYPE_SEPARATOR],
         )
 
+    def _forget_discovery(self, reg: Registration):
+        for key, cached in list(self._discovered.items()):
+            if cached.sender == reg.sender and cached.path == reg.path:
+                del self._discovered[key]
+                self._discovery_tried.pop(key, None)
+
     def _match(self, window: WindowInfo) -> Optional[Registration]:
         if window.xid and window.xid in self._registrations:
             return self._registrations[window.xid]
@@ -367,6 +403,117 @@ class RegistrarSource(Source):
                     mine = [r for r in self._registrations.values() if r.scope == scope]
             if mine:
                 return max(mine, key=lambda r: r.order)
+            # Qt6 on GNOME Wayland: menu object exported, RegisterWindow never
+            # called. Also covers apps orphaned by a daemon restart.
+            return self._discover(window)
+        return None
+
+    def _discovery_key(self, window: WindowInfo) -> str:
+        scope = _flatpak_scope(window.pid) if window.pid > 0 else None
+        return scope or f"pid:{window.pid}"
+
+    def _pid_matches_window(self, pid: int, window: WindowInfo) -> bool:
+        if pid <= 0 or window.pid <= 0:
+            return False
+        if pid == window.pid:
+            return True
+        scope = _flatpak_scope(window.pid)
+        return bool(scope) and _flatpak_scope(pid) == scope
+
+    def _introspect(self, sender: str, path: str) -> Optional[str]:
+        try:
+            result = self._connection.call_sync(
+                sender,
+                path,
+                "org.freedesktop.DBus.Introspectable",
+                "Introspect",
+                None,
+                GLib.VariantType("(s)"),
+                Gio.DBusCallFlags.NONE,
+                CALL_TIMEOUT_MS,
+                None,
+            )
+            return result.unpack()[0]
+        except Exception:
+            return None
+
+    def _menubar_paths(self, sender: str) -> list[str]:
+        """Object paths under known dbusmenu export roots, newest first."""
+        paths: list[str] = []
+        for root in _MENU_ROOTS:
+            xml = self._introspect(sender, root)
+            if not xml:
+                continue
+            children = _NODE_NAME_RE.findall(xml)
+            # Qt allocates /MenuBar/1, /MenuBar/2, … — prefer the highest id.
+            def sort_key(name: str):
+                return (0, int(name)) if name.isdigit() else (1, name)
+
+            for name in sorted(children, key=sort_key, reverse=True):
+                paths.append(f"{root}/{name}")
+        return paths
+
+    def _list_unique_names(self) -> list[str]:
+        try:
+            result = self._connection.call_sync(
+                "org.freedesktop.DBus",
+                "/org/freedesktop/DBus",
+                "org.freedesktop.DBus",
+                "ListNames",
+                None,
+                GLib.VariantType("(as)"),
+                Gio.DBusCallFlags.NONE,
+                CALL_TIMEOUT_MS,
+                None,
+            )
+            return [n for n in result.unpack()[0] if n.startswith(":")]
+        except Exception:
+            log.warning("ListNames failed during dbusmenu discovery", exc_info=True)
+            return []
+
+    def _discover(self, window: WindowInfo) -> Optional[Registration]:
+        key = self._discovery_key(window)
+        cached = self._discovered.get(key)
+        if cached is not None:
+            return cached
+        tried_at = self._discovery_tried.get(key)
+        if tried_at is not None and (time.monotonic() - tried_at) < DISCOVERY_NEGATIVE_TTL_S:
+            return None
+
+        self._discovery_tried[key] = time.monotonic()
+        for sender in self._list_unique_names():
+            pid = self._pid_of(sender)
+            if not self._pid_matches_window(pid, window):
+                continue
+            for path in self._menubar_paths(sender):
+                probe = Registration(
+                    window_id=0, sender=sender, path=path, pid=pid,
+                    order=0, scope=_flatpak_scope(pid) if pid > 0 else None,
+                )
+                children = self._fetch_children(probe, 0)
+                if not children:
+                    continue
+                labeled = [c for c in children if c.label or c.type == TYPE_SEPARATOR]
+                if not labeled:
+                    continue
+                self._order += 1
+                reg = Registration(
+                    window_id=DISCOVERY_XID_BASE | (self._order & 0x0FFFFFFF),
+                    sender=sender,
+                    path=path,
+                    pid=pid,
+                    order=self._order,
+                    scope=probe.scope,
+                )
+                self._discovered[key] = reg
+                self._watch_sender(sender)
+                log.info(
+                    "discovered unregistered dbusmenu for %s at %s%s (pid %d%s)",
+                    key, sender, path, pid,
+                    f", {reg.scope}" if reg.scope else "",
+                )
+                return reg
+
         return None
 
     # -- Source: children / activation --------------------------------------

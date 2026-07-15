@@ -1,10 +1,20 @@
+/* Gaps are real padding — entries are plain St.Button, so the shell's
+ * -natural-hpadding/-minimum-hpadding (PanelMenu.Button only) do nothing.
+ * Title right + first entry left = title→menu gap; each entry's L+R pads
+ * add between File/Edit/View for the roomy macOS bar look. */
 .global-menu-bar {
     spacing: 0px;
 }
 
+.global-menu-title {
+    font-weight: bold;
+    padding-left: 10px;
+    padding-right: 10px;
+}
+
 .global-menu-entry {
-    -natural-hpadding: 8px;
-    -minimum-hpadding: 4px;
+    padding-left: 10px;
+    padding-right: 10px;
 }
 
 .global-menu-accel {

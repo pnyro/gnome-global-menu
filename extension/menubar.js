@@ -4,12 +4,25 @@
 // changes unless the menu set actually changed).
 
 import Clutter from 'gi://Clutter';
+import Shell from 'gi://Shell';
 import St from 'gi://St';
 
 import * as Main from 'resource:///org/gnome/shell/ui/main.js';
 import * as PopupMenu from 'resource:///org/gnome/shell/ui/popupMenu.js';
 
 const PANEL_POSITION = 1; // in _leftBox, right after Activities
+
+// Turn an app id ("org.qbittorrent.qBittorrent.desktop") into a display name
+// ("qBittorrent"), preferring the desktop entry's own name when resolvable.
+function appDisplayName(appId) {
+    if (!appId)
+        return '';
+    const app = Shell.AppSystem.get_default().lookup_app(appId) ??
+        Shell.AppSystem.get_default().lookup_app(`${appId}.desktop`);
+    if (app)
+        return app.get_name();
+    return appId.replace(/\.desktop$/, '').split('.').at(-1) ?? appId;
+}
 
 function formatAccel(accel) {
     if (!accel)
@@ -48,6 +61,9 @@ class MenuEntry {
         }));
 
         this.menu = new PopupMenu.PopupMenu(this.button, 0.0, St.Side.TOP);
+        // Scope class so the spacious item styling only hits our dropdowns,
+        // not every popup menu in the shell.
+        this.menu.actor.add_style_class_name('global-menu-popup');
         this.menu.actor.hide();
         Main.uiGroup.add_child(this.menu.actor);
 
@@ -97,6 +113,12 @@ export class GlobalMenuBar {
         this._generation = 0;
 
         this._box = new St.BoxLayout({style_class: 'global-menu-bar'});
+        this._title = new St.Label({
+            style_class: 'global-menu-title',
+            y_align: Clutter.ActorAlign.CENTER,
+            visible: false,
+        });
+        this._box.add_child(this._title);
         Main.panel._leftBox.insert_child_at_index(this._box, PANEL_POSITION);
     }
 
@@ -134,6 +156,7 @@ export class GlobalMenuBar {
     setModel(model, source) {
         this._source = source ?? null;
         const menus = model?.menus ?? [];
+        this._setTitle(menus.length > 0 ? appDisplayName(model?.app_id) : '');
         if (model && model.generation === this._generation && menus.length === this._entries.length)
             return; // same extraction; keep widgets (open menus stay open)
 
@@ -160,10 +183,20 @@ export class GlobalMenuBar {
         this._box.visible = this._entries.length > 0;
     }
 
+    _setTitle(name) {
+        if (name) {
+            this._title.text = name;
+            this._title.visible = true;
+        } else {
+            this._title.visible = false;
+        }
+    }
+
     clear() {
         this._source = null;
         this._generation = 0;
         this._removeEntries();
+        this._setTitle('');
         this._box.visible = false;
     }
 
